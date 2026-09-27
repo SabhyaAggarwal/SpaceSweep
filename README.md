@@ -1,5 +1,7 @@
 # SpaceSweep
 
+[![Build](https://github.com/SabhyaAggarwal/SpaceSweep/actions/workflows/build.yml/badge.svg)](https://github.com/SabhyaAggarwal/SpaceSweep/actions/workflows/build.yml)
+
 A native macOS app (SwiftUI, macOS 14+) that finds what is eating your disk — Xcode junk, WhatsApp media, package caches, build folders, old Downloads, duplicates and files you haven't opened in months — and lets you review and remove it with a clear risk label on every row.
 
 No Electron, no subscriptions, no telemetry. One Swift package; build it yourself in about a minute.
@@ -80,6 +82,10 @@ swift test                # 19 unit tests for the CleanCore engine (also runs on
 ```
 
 The first launch may show "SpaceSweep is from an unidentified developer" because the bundle is ad-hoc signed; right-click → Open, or run `xattr -dr com.apple.quarantine build/SpaceSweep.app`.
+
+## Download a prebuilt app
+
+Every push to `main` builds `SpaceSweep.app` on GitHub Actions — grab `SpaceSweep.app.zip` from the latest run under **Actions → Build → Artifacts**. Tagging `v*` publishes it as a GitHub Release. Because it is ad-hoc signed, run `xattr -dr com.apple.quarantine SpaceSweep.app` once after unzipping, or right-click → Open.
 
 ## Keyboard shortcuts
 
