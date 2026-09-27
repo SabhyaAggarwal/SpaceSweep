@@ -18,12 +18,12 @@ if ! command -v swift >/dev/null; then
   exit 1
 fi
 
-echo "▸ Building (release)…"
+echo "==> Building (release)..."
 swift build -c release --product "$APP" 2>&1 | grep -vE '^\[|Compiling|Emitting|Write' || true
 BIN="$(swift build -c release --show-bin-path)/$APP"
-[ -x "$BIN" ] || { echo "Build failed — see errors above." >&2; exit 1; }
+[ -x "$BIN" ] || { echo "Build failed - see errors above." >&2; exit 1; }
 
-echo "▸ Assembling $BUNDLE…"
+echo "==> Assembling ${BUNDLE}..."
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "$BIN" "$BUNDLE/Contents/MacOS/$APP"
@@ -46,11 +46,11 @@ fi
 # across rebuilds. Not sandboxed: the app needs to read ~/Library.
 codesign --force --deep --sign - "$BUNDLE" >/dev/null 2>&1 || echo "  (codesign skipped)"
 
-echo "✓ Built $BUNDLE"
+echo "==> Built ${BUNDLE}"
 
 case "${1:-}" in
   --install)
-    echo "▸ Installing to /Applications…"
+    echo "==> Installing to /Applications..."
     rm -rf "/Applications/$APP.app"
     cp -R "$BUNDLE" "/Applications/$APP.app"
     open "/Applications/$APP.app"
