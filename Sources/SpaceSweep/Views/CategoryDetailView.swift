@@ -57,7 +57,9 @@ struct CategoryDetailView: View {
         }
         .navigationTitle(category.title)
         .navigationSubtitle(category.subtitle)
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Filter by name, path or note")
+        // Note: `.searchable` is deliberately not used here. On macOS 14/15 a searchable detail column inside
+        // NavigationSplitView can blank the sidebar and the detail's own content when the detail view is
+        // swapped with `.id()`. A plain filter field in the footer avoids that entirely.
         .toolbar { toolbarContent }
         .task(id: category.id) {
             if result == nil, !isScanning { model.scan(category.id) }
@@ -322,6 +324,21 @@ struct CategoryDetailView: View {
 
     private func footer(_ rows: [FileEntry]) -> some View {
         HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Filter by name, path or note", text: $searchText)
+                    .textFieldStyle(.plain)
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            .frame(width: 240)
+            .disabled(result == nil || result!.entries.isEmpty)
             if isScanning {
                 ProgressView().controlSize(.small)
                 ScanProgressLabel(categoryID: category.id)
