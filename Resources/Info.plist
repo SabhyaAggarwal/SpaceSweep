@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>SpaceSweep</string>
+	<key>CFBundleExecutable</key>
+	<string>SpaceSweep</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.sabhya.SpaceSweep</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>SpaceSweep</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Built with SpaceSweep. MIT licensed.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>SpaceSweep lists large, old and duplicate files on your Desktop so you can decide what to remove.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>SpaceSweep lists large, old and duplicate files in Documents so you can decide what to remove.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>SpaceSweep shows what is taking space in Downloads and when each item was last opened.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>SpaceSweep can show the Trash on external drives.</string>
+</dict>
+</plist>
