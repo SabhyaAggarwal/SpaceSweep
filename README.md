@@ -85,7 +85,7 @@ The first launch may show "SpaceSweep is from an unidentified developer" because
 
 ## Download a prebuilt app
 
-Every push to `main` builds `SpaceSweep.app` on GitHub Actions — grab `SpaceSweep.app.zip` from the latest run under **Actions → Build → Artifacts**. Tagging `v*` publishes it as a GitHub Release. Because it is ad-hoc signed, run `xattr -dr com.apple.quarantine SpaceSweep.app` once after unzipping, or right-click → Open.
+Every push to `main` builds `SpaceSweep.app` on a GitHub-hosted macOS runner and commits the result to [`dist/SpaceSweep.app.zip`](dist/SpaceSweep.app.zip) (also available under **Actions → Build → Artifacts**). Tagging `v*` publishes it as a GitHub Release. Because it is ad-hoc signed, run `xattr -dr com.apple.quarantine SpaceSweep.app` once after unzipping, or right-click → Open.
 
 ## Keyboard shortcuts
 

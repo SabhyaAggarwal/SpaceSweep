@@ -4,8 +4,12 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore: ["dist/**"]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   macos:
@@ -47,6 +51,19 @@ jobs:
           name: SpaceSweep.app
           path: SpaceSweep.app.zip
           if-no-files-found: error
+
+      # Keep a ready-to-download copy in the repo so nobody has to dig through Actions.
+      - name: Commit built app to dist/
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p dist
+          cp SpaceSweep.app.zip dist/SpaceSweep.app.zip
+          echo "Built from ${GITHUB_SHA} on $(date -u +%Y-%m-%dT%H:%MZ) by GitHub Actions ($(sw_vers -productVersion), $(xcodebuild -version | head -1))." > dist/BUILD_INFO.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist
+          git diff --cached --quiet || git commit -m "ci: update prebuilt SpaceSweep.app [skip ci]"
+          git push
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')

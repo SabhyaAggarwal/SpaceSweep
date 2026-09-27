@@ -150,7 +150,7 @@ private struct PathListEditor: View {
                 List(paths, id: \.self, selection: $selected) { p in
                     HStack {
                         Image(systemName: PathUtils.isDirectory(p) ? "folder" : "folder.badge.questionmark")
-                            .foregroundStyle(PathUtils.isDirectory(p) ? .secondary : .orange)
+                            .foregroundStyle(PathUtils.isDirectory(p) ? Color.secondary : Color.orange)
                         Text(p)
                             .font(.system(.callout, design: .monospaced))
                     }
