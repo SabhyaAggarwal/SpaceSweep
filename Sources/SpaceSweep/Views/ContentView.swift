@@ -154,6 +154,9 @@ private struct SidebarFooter: View {
                     SizeText(bytes: model.totalSafe).foregroundStyle(.green)
                 }
                 .font(.callout)
+                CleanEverythingButton()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
             }
         }
         .padding(.horizontal, 12)

@@ -91,6 +91,14 @@ public struct CleanCategory: Identifiable, Hashable, Sendable {
         }
     }
 
+    /// User-facing files where Finder's "Date Last Opened" is meaningful (not caches/build products).
+    public var usesSpotlightLastOpened: Bool {
+        switch kind {
+        case .downloads, .largeFiles, .staleFiles, .duplicates, .screenshots: return true
+        default: return group == .apps && risk != .safe
+        }
+    }
+
     /// Whether this category is relevant on this Mac right now.
     public var isAvailable: Bool {
         if requiresAnyPath.isEmpty { return true }

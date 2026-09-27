@@ -37,6 +37,10 @@ final class AppModel {
     // MARK: Deletion flow
 
     var pendingDeletion: [FileEntry] = []
+    /// Category id for each pending path, so the review sheet can group rows.
+    var pendingCategory: [String: String] = [:]
+    /// Paths the user unticked in the review sheet; they stay on disk.
+    var pendingExcluded: Set<String> = []
     var showDeleteSheet = false
     var isDeleting = false
     var deleteDone = 0
@@ -57,6 +61,9 @@ final class AppModel {
     }
 
     @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
+    /// Scans waiting for a slot. Running ~25 directory walks at once just thrashes the SSD and the UI.
+    @ObservationIgnored private var queue: [String] = []
+    @ObservationIgnored private let maxConcurrentScans = 3
 
     init() {
         settings = AppModel.load()
@@ -121,43 +128,60 @@ final class AppModel {
     // MARK: - Scanning
 
     func scan(_ id: String) {
-        guard let category = Catalog.category(id), !scanning.contains(id) else { return }
+        guard Catalog.category(id) != nil, !scanning.contains(id) else { return }
         scanning.insert(id)
         scanErrors[id] = nil
         progress[id] = ScanProgress()
+        if tasks.count >= maxConcurrentScans {
+            queue.append(id)
+        } else {
+            start(id)
+        }
+    }
+
+    private func startNextQueued() {
+        while tasks.count < maxConcurrentScans, !queue.isEmpty {
+            let next = queue.removeFirst()
+            if scanning.contains(next) { start(next) }
+        }
+    }
+
+    private func start(_ id: String) {
+        guard let category = Catalog.category(id) else { return }
         let settings = self.settings
         let installedHook: @Sendable (String) -> Bool = { MacServices.isAppInstalled($0) }
+        let lastUsedHook: @Sendable (String) -> Date? = { MacServices.lastUsedDate($0) }
 
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             let ctx = ScanContext(settings: settings, progress: { p in
                 Task { @MainActor [weak self] in
                     self?.progress[id] = p
                 }
-            }, isAppInstalled: installedHook)
+            }, isAppInstalled: installedHook, lastUsedDate: lastUsedHook)
             do {
                 let result = try ScanEngine.scan(category, context: ctx)
                 await MainActor.run { [weak self] in self?.finish(id, result: result) }
             } catch is CancellationError {
-                await MainActor.run { [weak self] in
-                    self?.scanning.remove(id)
-                    self?.progress[id] = nil
-                }
+                await MainActor.run { [weak self] in self?.settle(id, error: nil) }
             } catch {
-                await MainActor.run { [weak self] in
-                    self?.scanning.remove(id)
-                    self?.progress[id] = nil
-                    self?.scanErrors[id] = error.localizedDescription
-                }
+                await MainActor.run { [weak self] in self?.settle(id, error: error.localizedDescription) }
             }
         }
         tasks[id] = task
     }
 
-    private func finish(_ id: String, result: ScanResult) {
-        results[id] = result
+    /// Common cleanup after a scan stops for any reason.
+    private func settle(_ id: String, error: String?) {
         scanning.remove(id)
         progress[id] = nil
         tasks[id] = nil
+        if let error { scanErrors[id] = error }
+        startNextQueued()
+    }
+
+    private func finish(_ id: String, result: ScanResult) {
+        results[id] = result
+        settle(id, error: nil)
         // Pre-select rows that are always safe in categories that are themselves "safe".
         if let cat = Catalog.category(id), cat.risk == .safe {
             selection[id] = Set(result.entries.filter { $0.risk == .safe }.map(\.id))
@@ -172,13 +196,18 @@ final class AppModel {
     }
 
     func cancel(_ id: String) {
-        tasks[id]?.cancel()
-        tasks[id] = nil
+        if let i = queue.firstIndex(of: id) {
+            queue.remove(at: i)
+            settle(id, error: nil)
+            return
+        }
+        tasks[id]?.cancel()   // the task's catch block calls settle()
     }
 
     func cancelAll() {
+        for id in queue { scanning.remove(id); progress[id] = nil }
+        queue.removeAll()
         for (_, t) in tasks { t.cancel() }
-        tasks.removeAll()
     }
 
     // MARK: - Selection helpers
@@ -202,18 +231,66 @@ final class AppModel {
 
     // MARK: - Deletion
 
-    func requestDelete(_ entries: [FileEntry]) {
+    func requestDelete(_ entries: [FileEntry], categoryID: String? = nil) {
         guard !entries.isEmpty else { return }
         pendingDeletion = entries
+        pendingExcluded = []
+        pendingCategory = [:]
+        if let categoryID {
+            for e in entries { pendingCategory[e.path] = categoryID }
+        }
         showDeleteSheet = true
     }
 
     func requestDeleteSelection(in id: String) {
-        requestDelete(selectedEntries(in: id))
+        requestDelete(selectedEntries(in: id), categoryID: id)
+    }
+
+    /// Everything selected in every scanned category (safe rows are selected automatically after a scan),
+    /// plus any unselected Safe rows in categories the user hasn't touched. Shown for review before deleting.
+    func requestCleanEverything() {
+        var all: [FileEntry] = []
+        var map: [String: String] = [:]
+        for c in categories {
+            guard let r = results[c.id] else { continue }
+            let picked = selection[c.id] ?? []
+            for e in r.entries where picked.contains(e.id) || e.risk == .safe {
+                all.append(e)
+                map[e.path] = c.id
+            }
+        }
+        // The same path can surface in several categories (e.g. a .dmg in Downloads + Large Files).
+        var seen = Set<String>()
+        all = all.filter { seen.insert($0.path).inserted }
+        guard !all.isEmpty else { return }
+        pendingDeletion = all
+        pendingCategory = map
+        pendingExcluded = []
+        showDeleteSheet = true
+    }
+
+    /// Items that will actually be removed when the sheet is confirmed.
+    var pendingIncluded: [FileEntry] { pendingDeletion.filter { !pendingExcluded.contains($0.path) } }
+
+    func setPending(_ entry: FileEntry, included: Bool) {
+        if included { pendingExcluded.remove(entry.path) } else { pendingExcluded.insert(entry.path) }
+    }
+
+    func setPending(categoryID: String, included: Bool) {
+        for e in pendingDeletion where pendingCategory[e.path] == categoryID {
+            setPending(e, included: included)
+        }
+    }
+
+    func cancelPendingDeletion() {
+        showDeleteSheet = false
+        pendingDeletion = []
+        pendingCategory = [:]
+        pendingExcluded = []
     }
 
     func confirmDelete(permanently: Bool) {
-        let entries = pendingDeletion
+        let entries = pendingIncluded
         guard !entries.isEmpty else { return }
         isDeleting = true
         deleteDone = 0
@@ -243,6 +320,8 @@ final class AppModel {
         isDeleting = false
         showDeleteSheet = false
         pendingDeletion = []
+        pendingCategory = [:]
+        pendingExcluded = []
         lastReport = report
         showReport = true
         refreshDisk()

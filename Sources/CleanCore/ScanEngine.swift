@@ -44,6 +44,28 @@ public enum ScanEngine {
             return e
         }
 
+        // Replace noisy file-system access times with Finder's "Date Last Opened" for user files.
+        if let lastUsed = ctx.lastUsedDate, category.usesSpotlightLastOpened {
+            let limit = min(entries.count, 20_000)
+            for i in 0..<limit {
+                if i % 256 == 0 { try Task.checkCancellation() }
+                if let d = lastUsed(entries[i].path) {
+                    entries[i].accessed = d
+                } else if !entries[i].isDirectory {
+                    // Spotlight has never seen it opened: fall back to the modification date instead of
+                    // an access time that Spotlight/Time Machine/QuickLook may have bumped.
+                    entries[i].accessed = nil
+                }
+                if category.kind == .staleFiles, let d = entries[i].lastUsed {
+                    entries[i].note = (entries[i].isDirectory ? "Bundle · last used " : "Last used ") + AgeFormatter.relative(d, now: ctx.now)
+                }
+            }
+        }
+
+        // Table rows are keyed by path; never hand the UI two rows with the same id.
+        var seenPaths = Set<String>()
+        entries = entries.filter { seenPaths.insert($0.path).inserted }
+
         let uniqueDenied = Array(Set(denied)).sorted()
         return ScanResult(categoryID: category.id,
                           entries: entries,

@@ -20,6 +20,7 @@ struct OverviewView: View {
         .navigationTitle("Overview")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                CleanEverythingButton()
                 if !model.scanning.isEmpty {
                     Button {
                         model.cancelAll()
@@ -73,6 +74,13 @@ struct OverviewView: View {
                 StatTile(title: "Scanned", value: "\(model.results.count) / \(model.categories.count)",
                          subtitle: model.scanning.isEmpty ? "categories" : "\(model.scanning.count) running…")
             }
+            HStack(spacing: 10) {
+                CleanEverythingButton(prominent: true)
+                Text("Opens a review list of every ticked item in every category — Safe items are ticked for you, anything else only if you selected it. Nothing is removed until you confirm.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(16)
         .background(Color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -122,6 +130,48 @@ struct OverviewView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.quaternary))
             }
         }
+    }
+}
+
+// MARK: - Clean everything
+
+/// One click → review sheet with every candidate across all categories → confirm.
+struct CleanEverythingButton: View {
+    @Environment(AppModel.self) private var model
+    var prominent = false
+
+    private var candidateSize: Int64 {
+        var seen = Set<String>()
+        var total: Int64 = 0
+        for c in model.categories {
+            guard let r = model.results[c.id] else { continue }
+            let picked = model.selection[c.id] ?? []
+            for e in r.entries where (picked.contains(e.id) || e.risk == .safe) && seen.insert(e.path).inserted {
+                total += e.size
+            }
+        }
+        return total
+    }
+
+    var body: some View {
+        let size = candidateSize
+        Button {
+            model.requestCleanEverything()
+        } label: {
+            if prominent {
+                Label("Review & Clean Everything  ·  \(ByteFormatter.string(size))", systemImage: "sparkles")
+                    .font(.body.weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+            } else {
+                Label("Clean Everything", systemImage: "sparkles")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(prominent ? .large : .regular)
+        .tint(.green)
+        .disabled(size == 0)
+        .help("Review every ticked item across all categories, then move them to the Trash (⇧⌘⌫)")
     }
 }
 

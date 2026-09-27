@@ -8,15 +8,19 @@ public struct ScanContext: Sendable {
     public var progress: @Sendable (ScanProgress) -> Void
     /// Platform hook: is an app with this bundle identifier installed? (nil = unknown / not on macOS)
     public var isAppInstalled: (@Sendable (String) -> Bool)?
+    /// Platform hook: the "Date Last Opened" Finder shows (Spotlight's kMDItemLastUsedDate). nil = unknown.
+    public var lastUsedDate: (@Sendable (String) -> Date?)?
 
     public init(settings: ScanSettings = ScanSettings(),
                 now: Date = Date(),
                 progress: @escaping @Sendable (ScanProgress) -> Void = { _ in },
-                isAppInstalled: (@Sendable (String) -> Bool)? = nil) {
+                isAppInstalled: (@Sendable (String) -> Bool)? = nil,
+                lastUsedDate: (@Sendable (String) -> Date?)? = nil) {
         self.settings = settings
         self.now = now
         self.progress = progress
         self.isAppInstalled = isAppInstalled
+        self.lastUsedDate = lastUsedDate
     }
 
     var excludedPaths: Set<String> { Set(settings.excludedPaths.map(PathUtils.expand)) }
@@ -30,7 +34,7 @@ final class ProgressThrottle: @unchecked Sendable {
     var items = 0
     var bytes: Int64 = 0
 
-    init(interval: TimeInterval = 0.15, sink: @escaping @Sendable (ScanProgress) -> Void) {
+    init(interval: TimeInterval = 0.25, sink: @escaping @Sendable (ScanProgress) -> Void) {
         self.interval = interval
         self.sink = sink
     }

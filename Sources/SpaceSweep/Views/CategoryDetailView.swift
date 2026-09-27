@@ -22,7 +22,9 @@ struct CategoryDetailView: View {
         )
     }
 
-    private var rows: [FileEntry] {
+    /// Filtered + sorted rows. Computed once per body evaluation and handed down, so a progress tick
+    /// from another scan doesn't re-sort thousands of rows several times.
+    private func computeRows() -> [FileEntry] {
         guard let result else { return [] }
         let now = Date()
         var list = result.entries
@@ -40,6 +42,7 @@ struct CategoryDetailView: View {
     }
 
     var body: some View {
+        let rows = computeRows()
         VStack(spacing: 0) {
             header
             Divider()
@@ -48,9 +51,9 @@ struct CategoryDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
             }
-            content
+            content(rows)
             Divider()
-            footer
+            footer(rows)
         }
         .navigationTitle(category.title)
         .navigationSubtitle(category.subtitle)
@@ -127,18 +130,18 @@ struct CategoryDetailView: View {
     // MARK: Content
 
     @ViewBuilder
-    private var content: some View {
+    private func content(_ rows: [FileEntry]) -> some View {
         if let result {
             if result.entries.isEmpty {
                 ContentUnavailableView {
                     Label(isScanning ? "Scanning…" : "Nothing here", systemImage: isScanning ? "magnifyingglass" : "checkmark.circle")
                 } description: {
-                    Text(isScanning ? progressText : emptyMessage(result))
+                    if isScanning { ScanProgressLabel(categoryID: category.id) } else { Text(emptyMessage(result)) }
                 }
             } else if rows.isEmpty {
                 ContentUnavailableView.search(text: searchText.isEmpty ? ageFilter.rawValue : searchText)
             } else {
-                table
+                table(rows)
             }
         } else if let error = model.scanErrors[category.id] {
             ContentUnavailableView {
@@ -154,11 +157,7 @@ struct CategoryDetailView: View {
                     .controlSize(.large)
                 Text(isScanning ? "Scanning…" : "Ready to scan")
                     .font(.headline)
-                Text(progressText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                ScanProgressLabel(categoryID: category.id)
                     .frame(maxWidth: 520)
                 if !isScanning {
                     Button("Scan Now") { model.scan(category.id) }
@@ -167,15 +166,6 @@ struct CategoryDetailView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-
-    private var progressText: String {
-        guard let p = model.progress[category.id] else { return " " }
-        var parts: [String] = []
-        if p.itemsVisited > 0 { parts.append("\(p.itemsVisited.formatted()) files") }
-        if p.bytesFound > 0 { parts.append(ByteFormatter.string(p.bytesFound)) }
-        if !p.currentPath.isEmpty { parts.append(p.currentPath) }
-        return parts.joined(separator: " · ")
     }
 
     private func emptyMessage(_ result: ScanResult) -> String {
@@ -190,7 +180,7 @@ struct CategoryDetailView: View {
         }
     }
 
-    private var table: some View {
+    private func table(_ rows: [FileEntry]) -> some View {
         Table(rows, selection: selectionBinding, sortOrder: $sortOrder) {
             TableColumn("Name", value: \.name) { entry in
                 EntryNameCell(entry: entry, showPath: category.kind.showsPathInName)
@@ -238,7 +228,7 @@ struct CategoryDetailView: View {
             .width(min: 140, ideal: 260)
         }
         .contextMenu(forSelectionType: String.self) { ids in
-            let picked = entries(for: ids)
+            let picked = rows.filter { ids.contains($0.id) }
             if picked.count == 1, let e = picked.first {
                 Button("Open") { MacServices.open(e.path) }
                 Button("Reveal in Finder") { MacServices.reveal([e.path]) }
@@ -252,12 +242,8 @@ struct CategoryDetailView: View {
                 Button("Move to Trash…", role: .destructive) { model.requestDelete(picked) }
             }
         } primaryAction: { ids in
-            MacServices.reveal(entries(for: ids).map(\.path))
+            MacServices.reveal(rows.filter { ids.contains($0.id) }.map(\.path))
         }
-    }
-
-    private func entries(for ids: Set<String>) -> [FileEntry] {
-        rows.filter { ids.contains($0.id) }
     }
 
     private func ageColor(_ entry: FileEntry) -> Color {
@@ -299,7 +285,7 @@ struct CategoryDetailView: View {
             .help("Filter rows by age or risk")
 
             Menu {
-                Button("Select All") { model.selection[category.id] = Set(rows.map(\.id)) }
+                Button("Select All") { model.selection[category.id] = Set(computeRows().map(\.id)) }
                 Button("Select Only Safe Items") { model.selectSafe(in: category.id) }
                 Menu("Select Not Opened In…") {
                     Button("30 days") { model.selectOlder(than: 30, in: category.id) }
@@ -334,15 +320,11 @@ struct CategoryDetailView: View {
 
     // MARK: Footer
 
-    private var footer: some View {
+    private func footer(_ rows: [FileEntry]) -> some View {
         HStack(spacing: 12) {
             if isScanning {
                 ProgressView().controlSize(.small)
-                Text(progressText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                ScanProgressLabel(categoryID: category.id)
             } else if let result {
                 Text("\(rows.count) of \(result.entries.count) shown · \(ByteFormatter.string(rows.reduce(0) { $0 + $1.size }))")
                     .font(.callout)
@@ -373,6 +355,32 @@ struct CategoryDetailView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+}
+
+// MARK: - Progress label
+
+/// Isolated so only this small view re-renders on progress ticks, not the whole table.
+private struct ScanProgressLabel: View {
+    @Environment(AppModel.self) private var model
+    let categoryID: String
+
+    var body: some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .monospacedDigit()
+    }
+
+    private var text: String {
+        guard let p = model.progress[categoryID] else { return " " }
+        var parts: [String] = []
+        if p.itemsVisited > 0 { parts.append("\(p.itemsVisited.formatted()) files") }
+        if p.bytesFound > 0 { parts.append(ByteFormatter.string(p.bytesFound)) }
+        if !p.currentPath.isEmpty { parts.append(PathUtils.abbreviate(p.currentPath)) }
+        return parts.joined(separator: " · ")
     }
 }
 

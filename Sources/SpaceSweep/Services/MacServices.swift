@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import CoreServices
 import UniformTypeIdentifiers
 import CleanCore
 
@@ -59,6 +60,14 @@ enum MacServices {
         }
         installedLock.lock(); installedCache[bundleID] = found; installedLock.unlock()
         return found
+    }
+
+    // MARK: Spotlight
+
+    /// Finder's "Date Last Opened" (kMDItemLastUsedDate). nil when Spotlight has no record of the item being opened.
+    static func lastUsedDate(_ path: String) -> Date? {
+        guard let item = MDItemCreate(nil, path as CFString) else { return nil }
+        return MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date
     }
 
     // MARK: Full Disk Access

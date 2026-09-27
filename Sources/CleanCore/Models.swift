@@ -32,8 +32,9 @@ public struct FileEntry: Identifiable, Hashable, Sendable {
     public let size: Int64
     public let isDirectory: Bool
     public let modified: Date?
-    /// Last access ("last opened") time. On APFS this is updated lazily, so treat it as a hint.
-    public let accessed: Date?
+    /// Last opened time. Filled from Spotlight's kMDItemLastUsedDate when the host provides a hook
+    /// (what Finder shows as "Date Last Opened"); otherwise the file system's access time.
+    public var accessed: Date?
     public let created: Date?
     /// Short human hint, e.g. "iOS 17.4 debug symbols", "Duplicate of …", "Installer".
     public var note: String?

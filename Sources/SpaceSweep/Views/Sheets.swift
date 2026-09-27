@@ -2,15 +2,37 @@
 import SwiftUI
 import CleanCore
 
-// MARK: - Delete confirmation
+// MARK: - Delete confirmation / review
 
 struct DeleteSheet: View {
     @Environment(AppModel.self) private var model
     @State private var permanently = false
+    @State private var expanded: Set<String> = []
 
-    private var entries: [FileEntry] { model.pendingDeletion }
-    private var total: Int64 { entries.reduce(0) { $0 + $1.size } }
-    private var carefulCount: Int { entries.filter { $0.risk == .careful }.count }
+    private struct Group: Identifiable {
+        let id: String          // category id or "selection"
+        let title: String
+        let entries: [FileEntry]
+    }
+
+    private var groups: [Group] {
+        var byCategory: [String: [FileEntry]] = [:]
+        var loose: [FileEntry] = []
+        for e in model.pendingDeletion {
+            if let c = model.pendingCategory[e.path] { byCategory[c, default: []].append(e) } else { loose.append(e) }
+        }
+        var out: [Group] = model.categories.compactMap { c in
+            guard let list = byCategory[c.id] else { return nil }
+            return Group(id: c.id, title: c.title, entries: list.sorted { $0.size > $1.size })
+        }
+        if !loose.isEmpty { out.append(Group(id: "selection", title: "Selected items", entries: loose)) }
+        return out
+    }
+
+    private var included: [FileEntry] { model.pendingIncluded }
+    private var total: Int64 { included.reduce(0) { $0 + $1.size } }
+    private var carefulCount: Int { included.filter { $0.risk == .careful }.count }
+    private var multi: Bool { groups.count > 1 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -19,40 +41,48 @@ struct DeleteSheet: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.red)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(permanently ? "Permanently delete \(entries.count) item\(entries.count == 1 ? "" : "s")?" : "Move \(entries.count) item\(entries.count == 1 ? "" : "s") to the Trash?")
+                    Text(multi ? "Review what will be removed" : (permanently ? "Permanently delete \(included.count) item\(included.count == 1 ? "" : "s")?" : "Move \(included.count) item\(included.count == 1 ? "" : "s") to the Trash?"))
                         .font(.title3.weight(.semibold))
-                    Text("This frees about \(ByteFormatter.string(total)).")
+                    Text(multi
+                         ? "\(included.count) of \(model.pendingDeletion.count) items ticked across \(groups.count) categories · frees about \(ByteFormatter.string(total))"
+                         : "This frees about \(ByteFormatter.string(total)).")
                         .foregroundStyle(.secondary)
                 }
+                Spacer()
+                if multi {
+                    Button("Tick All") { for e in model.pendingDeletion { model.setPending(e, included: true) } }
+                    Button("Safe Only") {
+                        for e in model.pendingDeletion { model.setPending(e, included: e.risk == .safe) }
+                    }
+                }
             }
+            .controlSize(.small)
 
+            if !model.scanning.isEmpty {
+                Label("\(model.scanning.count) scan\(model.scanning.count == 1 ? " is" : "s are") still running — their results aren't included yet.", systemImage: "hourglass")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+            }
             if carefulCount > 0 {
-                Label("\(carefulCount) of these are marked “Careful” — deleting may lose data or need a re-download.", systemImage: "exclamationmark.triangle.fill")
+                Label("\(carefulCount) ticked item\(carefulCount == 1 ? " is" : "s are") marked “Careful” — deleting may lose data or need a re-download.", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
                     .font(.callout)
             }
 
-            List(entries) { e in
-                HStack(spacing: 8) {
-                    Image(nsImage: MacServices.icon(for: e))
-                        .resizable()
-                        .frame(width: 16, height: 16)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(e.name).lineLimit(1).truncationMode(.middle)
-                        Text(PathUtils.abbreviate(e.path))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+            List {
+                ForEach(groups) { group in
+                    if multi {
+                        DisclosureGroup(isExpanded: expandedBinding(group.id)) {
+                            ForEach(group.entries) { e in row(e) }
+                        } label: {
+                            groupHeader(group)
+                        }
+                    } else {
+                        ForEach(group.entries) { e in row(e) }
                     }
-                    Spacer()
-                    RiskBadge(risk: e.risk ?? .review, compact: true)
-                    SizeText(bytes: e.size)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 80, alignment: .trailing)
                 }
             }
-            .frame(minHeight: 180, maxHeight: 320)
+            .frame(minHeight: 220, maxHeight: 380)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Toggle(isOn: $permanently) {
@@ -74,23 +104,99 @@ struct DeleteSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { model.showDeleteSheet = false }
+                Button("Cancel") { model.cancelPendingDeletion() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(model.isDeleting)
                 Button(role: .destructive) {
                     model.confirmDelete(permanently: permanently)
                 } label: {
                     Text(permanently ? "Delete \(ByteFormatter.string(total))" : "Move \(ByteFormatter.string(total)) to Trash")
-                        .frame(minWidth: 140)
+                        .frame(minWidth: 160)
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(model.isDeleting)
+                .disabled(model.isDeleting || included.isEmpty)
                 .tint(.red)
             }
         }
         .padding(20)
-        .frame(width: 620)
-        .onAppear { permanently = model.settings.permanentDelete }
+        .frame(width: multi ? 720 : 620)
+        .onAppear {
+            permanently = model.settings.permanentDelete
+            // Open the biggest groups so the review isn't an empty list of headers.
+            expanded = Set(groups.sorted { size(of: $0) > size(of: $1) }.prefix(3).map(\.id))
+        }
+    }
+
+    private func size(of group: Group) -> Int64 { group.entries.reduce(0) { $0 + $1.size } }
+
+    private func expandedBinding(_ id: String) -> Binding<Bool> {
+        Binding(get: { expanded.contains(id) },
+                set: { if $0 { expanded.insert(id) } else { expanded.remove(id) } })
+    }
+
+    private func groupHeader(_ group: Group) -> some View {
+        let inc = group.entries.filter { !model.pendingExcluded.contains($0.path) }
+        let allOn = inc.count == group.entries.count
+        let noneOn = inc.isEmpty
+        return HStack(spacing: 8) {
+            Toggle(isOn: Binding(get: { !noneOn }, set: { model.setPending(categoryID: group.id, included: $0) })) {
+                EmptyView()
+            }
+            .toggleStyle(.checkbox)
+            .opacity(allOn || noneOn ? 1 : 0.55)
+            .help(allOn ? "Untick everything in this category" : "Tick everything in this category")
+            if let cat = Catalog.category(group.id) {
+                Image(systemName: cat.symbol).foregroundStyle(cat.risk.color).frame(width: 18)
+            }
+            Text(group.title).fontWeight(.semibold)
+            Text("\(inc.count)/\(group.entries.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            SizeText(bytes: inc.reduce(0) { $0 + $1.size }, emphasized: true)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func row(_ e: FileEntry) -> some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: Binding(get: { !model.pendingExcluded.contains(e.path) },
+                                 set: { model.setPending(e, included: $0) })) {
+                EmptyView()
+            }
+            .toggleStyle(.checkbox)
+            Image(nsImage: MacServices.icon(for: e))
+                .resizable()
+                .frame(width: 16, height: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(e.name).lineLimit(1).truncationMode(.middle)
+                HStack(spacing: 4) {
+                    Text(PathUtils.abbreviate(e.path))
+                    if let d = e.lastUsed {
+                        Text("· opened \(AgeFormatter.relative(d))")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            }
+            Spacer()
+            Button {
+                MacServices.reveal([e.path])
+            } label: {
+                Image(systemName: "arrow.up.forward.square")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Reveal in Finder")
+            RiskBadge(risk: e.risk ?? .review, compact: true)
+            SizeText(bytes: e.size)
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .opacity(model.pendingExcluded.contains(e.path) ? 0.5 : 1)
     }
 }
 

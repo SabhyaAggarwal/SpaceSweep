@@ -24,6 +24,10 @@ struct SpaceSweepApp: App {
                 Button("Stop Scanning") { model.cancelAll() }
                     .keyboardShortcut(".", modifiers: .command)
                     .disabled(model.scanning.isEmpty)
+                Divider()
+                Button("Review & Clean Everything…") { model.requestCleanEverything() }
+                    .keyboardShortcut(.delete, modifiers: [.command, .shift])
+                    .disabled(model.results.isEmpty)
             }
             CommandGroup(replacing: .help) {
                 Button("SpaceSweep on GitHub") {

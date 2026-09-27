@@ -56,7 +56,8 @@ User Caches · Logs & Crash Reports · iPhone & iPad Backups (`~/Library/Applica
 ## Safety model
 
 - **Trash by default.** Removal uses `FileManager.trashItem`, so ⌘Z in Finder still works. A per-action toggle (and a Settings default) switches to permanent deletion.
-- **Always confirm.** Every deletion shows the full list with sizes and risk badges before anything moves.
+- **Always confirm.** Every deletion shows the full list with sizes and risk badges before anything moves. **Review & Clean Everything** (green button on the Overview) gathers every Safe item plus anything you selected across all categories into one grouped, tickable list.
+- **Last Opened is Finder's.** Dates come from Spotlight's `kMDItemLastUsedDate` (what Finder shows as "Date Last Opened"), not the file-system access time that backups and indexing keep bumping.
 - **Protected roots.** The app refuses to delete `~`, `~/Library`, `~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `/Applications`, `/System`, `/Library`, `/usr` etc. as a whole — only specific items from a scan result.
 - **Not sandboxed.** It has to read `~/Library`. Grant **Full Disk Access** (System Settings → Privacy & Security) to see Mail, Messages, Safari and iOS backups; the app detects when a folder was denied and shows a banner with a button that deep-links there ([Apple Developer Forums](https://developer.apple.com/forums/thread/114452)).
 - **Scans are cancellable** and run off the main thread; the UI stays responsive on a 100k-file walk.
@@ -92,6 +93,7 @@ Every push to `main` builds `SpaceSweep.app` on a GitHub-hosted macOS runner and
 | Shortcut | Action |
 |---|---|
 | ⇧⌘R | Scan everything (including slow deep scans) |
+| ⇧⌘⌫ | Review & Clean Everything — one list of every candidate across all categories, tick/untick, confirm |
 | ⌘. | Stop all scans |
 | ⌘⌫ | Move selected rows to Trash (after confirmation) |
 | Double-click row | Reveal in Finder |
